@@ -155,5 +155,5 @@ Outputs:
     Value: !Sub >
       Deployment successful! To find your Public IP:
       1. Go to ECS -> Clusters -> ${ECSCluster}
-      2. Click the 'Tasks' tab and then click on the task ID.
+      2. Click the 'Tasks' tab and then click on the task ID
       3. The Public IP is listed in the 'Network' section.
