@@ -15,14 +15,14 @@ The template creates:
 
 ## ⚙️ Prerequisites
  - AWS CLI installed and configured with appropriate permissions
- - PowerShell (for running the deployment commands)
+ - PowerShell/Terminal (for running the deployment commands)
  - An IAM role named ecsTaskExecutionRole in your AWS account (this is usually created automatically when you first use ECS via the console)
 
 ## 🚀 Deployment Steps
  - Save the Template
  - Save the provided YAML as fargate-nginx-no-alb.yml
 ## 2. Deploy the Stack
- - Run this PowerShell command:
+ - Run this command:
    ```bash
    aws cloudformation deploy --template-file fargate-nginx-no-alb.yml --stack-name MyNginxStack --capabilities CAPABILITY_IAM
    ```
@@ -46,4 +46,3 @@ aws cloudformation delete-stack --stack-name MyNginxStack
  - If deployment fails, check CloudFormation events in the AWS Console
  - Ensure the ecsTaskExecutionRole exists in your account
  - Verify your AWS CLI has sufficient permissions to create the resources
- - Check ECS service events and task logs in CloudWatch if the container isn't responding
