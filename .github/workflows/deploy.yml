@@ -1,0 +1,40 @@
+name: Deploy to AWS Fargate
+
+on:
+  push:
+    branches: [ main ]
+  # Optional: Also run on pull requests for testing
+  # pull_request:
+  #   branches: [ main ]
+
+# Prevent multiple concurrent deployments on the same stack
+concurrency:
+  group: production-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production  # Creates a deployment environment in GitHub
+
+    steps:
+    # Step 1: Checkout the code
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # Step 2: Configure AWS credentials
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1  # Change to your preferred region
+
+    # Step 3: Deploy CloudFormation Stack
+    - name: Deploy CloudFormation Stack
+      run: |
+        aws cloudformation deploy \
+          --template-file Template/fargate-nginx-no-alb.yml \
+          --stack-name MyNginxStack \
+          --capabilities CAPABILITY_IAM \
+          --no-fail-on-empty-changeset
