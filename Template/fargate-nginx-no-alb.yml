@@ -1,0 +1,167 @@
+---
+# The version of CloudFormation language you're using. Always use this version.
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Minimal template to deploy NGINX on Fargate with a Public IP'
+
+# Section 1: The VPC - Our private network
+Resources:
+  # This creates the VPC, which is like building a plot of land for all our resources.
+  MyVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16 # The total range of IP addresses available in our VPC.
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:  # FIXED: Tags moved under Properties
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-VPC # Names the VPC after our CloudFormation stack.
+
+  # Section 2: Public Subnets - The neighborhoods with access to the internet
+  # We create one subnet in two different Availability Zones for reliability.
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC # Puts this subnet inside the VPC we created above.
+      CidrBlock: 10.0.1.0/24 # A small slice of the VPC's IP range for this subnet.
+      AvailabilityZone: !Select [0, !GetAZs ''] # Picks the first AZ in the region (e.g., us-east-1a).
+      MapPublicIpOnLaunch: true # THIS IS KEY: Makes instances in this subnet get a public IP by default.
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-PublicSubnet-1
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs ''] # Picks the second AZ in the region (e.g., us-east-1b).
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-PublicSubnet-2
+
+  # Section 3: Internet Gateway - The front door to the internet
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:  # FIXED: Added Properties section for Tags
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-IGW
+
+  # This resource attaches the Internet Gateway to our VPC.
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref MyVPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # Section 4: Route Table - The signpost that tells traffic how to leave the subnet
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-Public-RT
+
+  # This is the actual rule: "Traffic going anywhere (0.0.0.0/0), go to the Internet Gateway."
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment # Waits for the gateway to be attached first.
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  # These associations link the public subnets to the public route table.
+  PublicSubnet1RouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet2RouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  # Section 5: Security Group - The firewall for our container
+  # This allows incoming HTTP traffic from ANYWHERE on the internet.
+  TaskSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTP from the world
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80   # The starting port number
+          ToPort: 80     # The ending port number (same as start for a single port)
+          CidrIp: 0.0.0.0/0 # The source: everywhere.
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-Task-SG
+
+  # Section 6: ECS Cluster - Just a logical container for our service. Simple for Fargate.
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub ${AWS::StackName}-cluster
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-cluster
+
+  # Section 7: Task Definition - The Blueprint for our container
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: nginx-service # The name of the blueprint
+      NetworkMode: awsvpc    # Required for Fargate
+      RequiresCompatibilities:
+        - FARGATE           # We are using Fargate launch type
+      Cpu: 256              # Units (256 units = 0.25 vCPU)
+      Memory: 512           # Units (512 MB = 0.5 GB)
+      # This role is needed for ECS to pull the image and send logs to CloudWatch.
+      ExecutionRoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/ecsTaskExecutionRole
+      ContainerDefinitions:
+        - Name: nginx-container # The name of the container inside the task
+          Image: nginx:latest   # The Docker image to use
+          PortMappings:
+            - ContainerPort: 80 # The port the container is listening on
+              Protocol: tcp
+          # This configures logging to CloudWatch so we can debug if something goes wrong.
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref AWS::StackName
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  # Section 8: ECS Service - The Manager that runs the tasks
+  FargateService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: nginx-service
+      Cluster: !Ref ECSCluster
+      LaunchType: FARGATE
+      DesiredCount: 1 # Run exactly 1 copy of our task at all times.
+      TaskDefinition: !Ref TaskDefinition # Use the blueprint we defined above.
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED # THE MOST IMPORTANT SETTING FOR THIS "NO-ALB" SETUP.
+          Subnets:
+            - !Ref PublicSubnet1 # Launch the task in these public subnets...
+            - !Ref PublicSubnet2 # ...so it can get a public IP.
+          SecurityGroups:
+            - !Ref TaskSecurityGroup # Apply our firewall rules.
+
+# Section 9: Outputs - Useful information to display after the stack is created
+Outputs:
+  PublicIP:
+    Description: The public IP address of the Nginx task. Copy this into your browser!
+    # Note: Getting the IP directly is complex. You will find it in the ECS console.
+    Value: !Sub >
+      Deployment successful! To find your Public IP:
+      1. Go to ECS -> Clusters -> ${ECSCluster}
+      2. Click the 'Tasks' tab and then click on the task ID.
+      3. The Public IP is listed in the 'Network' section.
