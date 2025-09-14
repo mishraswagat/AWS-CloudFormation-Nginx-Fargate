@@ -38,3 +38,17 @@ jobs:
           --stack-name MyNginxStack \
           --capabilities CAPABILITY_IAM \
           --no-fail-on-empty-changeset
+    # Step 4: Get the Public IP (Optional)
+    - name: Get Public IP
+      run: |
+        TASK_ARN=$(aws ecs list-tasks --cluster MyNginxStack-cluster --query "taskArns[0]" --output text)
+        PUBLIC_IP=$(aws ecs describe-tasks --cluster MyNginxStack-cluster --tasks $TASK_ARN --query "tasks[0].attachments[0].details[?name=='publicIPv4Address'].value | [0]" --output text)
+        echo "::set-output name=public_ip::$PUBLIC_IP"
+      id: get_ip
+
+    # Step 5: Show success message with IP
+    - name: Display Deployment Info
+      run: |
+        echo "🚀 Deployment successful!"
+        echo "🌐 Public IP: ${{ steps.get_ip.outputs.public_ip }}"
+        echo "📋 Open this IP in your browser to see NGINX running"
