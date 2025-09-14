@@ -129,14 +129,6 @@ Resources:
           PortMappings:
             - ContainerPort: 80 # The port the container is listening on
               Protocol: tcp
-          # This configures logging to CloudWatch so we can debug if something goes wrong.
-          LogConfiguration:
-            LogDriver: awslogs
-            Options:
-              awslogs-group: !Ref AWS::StackName
-              awslogs-region: !Ref AWS::Region
-              awslogs-stream-prefix: ecs
-
   # Section 8: ECS Service - The Manager that runs the tasks
   FargateService:
     Type: AWS::ECS::Service
