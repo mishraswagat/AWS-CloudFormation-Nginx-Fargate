@@ -21,6 +21,7 @@ The template creates:
 ## 🚀 Deployment Steps
  - Save the Template
  - Save the provided YAML as fargate-nginx-no-alb.yml
+   
 ## 2. Deploy the Stack
  - Run this command:
    ```bash
